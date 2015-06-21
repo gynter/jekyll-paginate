@@ -50,10 +50,39 @@ module Jekyll
       #                   "previous_page" => <Number>,
       #                   "next_page" => <Number> }}
       def paginate(site, index, page)
+        site_posts = []
         all_posts = site.site_payload['site']['posts'].reject { |post| post['hidden'] }
-        pages = Pager.calculate_pages(all_posts, site.config['paginate'].to_i)
+
+        # Filter all posts with available filters.
+        if site.config['paginate_filter']
+          if !site.config['paginate_filter'][index].nil?
+            all_posts.each do |post|
+              filter_name = site.config['paginate_filter'][index]['name']
+              filter_value = site.config['paginate_filter'][index]['value']
+              value = post[filter_name]
+
+              if value
+                if filter_value.instance_of? Array
+                  if filter_value.include? value
+                    site_posts.push(post)
+                  end
+                else
+                  if filter_value == value
+                    site_posts.push(post)
+                  end
+                end
+              end
+            end
+          end
+        end
+
+        if site_posts.empty?
+          site_posts = all_posts
+        end
+
+        pages = Pager.calculate_pages(site_posts, site.config['paginate'].to_i)
         (1..pages).each do |num_page|
-          pager = Pager.new(site, index, num_page, all_posts, pages)
+          pager = Pager.new(site, index, num_page, site_posts, pages)
           if num_page > 1
             newpage = Page.new(site, site.source, page.dir, page.name)
             newpage.pager = pager
