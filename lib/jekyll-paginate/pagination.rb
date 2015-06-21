@@ -13,12 +13,23 @@ module Jekyll
       #
       # Returns nothing.
       def generate(site)
-        if Pager.pagination_enabled?(site)
-          if template = self.class.template_page(site)
-            paginate(site, template)
-          else
-            Jekyll.logger.warn "Pagination:", "Pagination is enabled, but I couldn't find " +
-            "an index.html page to use as the pagination template. Skipping pagination."
+        # Convert string paginate_path to array, for backwards
+        # compatibility.
+        if site.config['paginate_path'].instance_of? String
+            Jekyll.logger.warn "Pagination:", "paginate_path is as String, " +
+            "but should be an Array, converting it for backwards compatibility, "+
+            "but make sure You update the config"
+            site.config['paginate_path'] = [site.config['paginate_path']]
+        end
+
+        site.config['paginate_path'].each_with_index do |paginate_path, index|
+          if Pager.pagination_enabled?(site)
+            if template = self.class.template_page(site, index)
+              paginate(site, index, template)
+            else
+              Jekyll.logger.warn "Pagination:", "Pagination is enabled, but I couldn't find " +
+              "an index.html page to use as the pagination template. Skipping pagination."
+            end
           end
         end
       end
@@ -27,8 +38,9 @@ module Jekyll
       # directories, e.g.: page2/index.html, page3/index.html, etc and adds more
       # site-wide data.
       #
-      # site - The Site.
-      # page - The index.html Page that requires pagination.
+      # site  - The Site.
+      # index - index in the paginate_path list
+      # page  - The index.html Page that requires pagination.
       #
       # {"paginator" => { "page" => <Number>,
       #                   "per_page" => <Number>,
@@ -37,15 +49,15 @@ module Jekyll
       #                   "total_pages" => <Number>,
       #                   "previous_page" => <Number>,
       #                   "next_page" => <Number> }}
-      def paginate(site, page)
+      def paginate(site, index, page)
         all_posts = site.site_payload['site']['posts'].reject { |post| post['hidden'] }
         pages = Pager.calculate_pages(all_posts, site.config['paginate'].to_i)
         (1..pages).each do |num_page|
-          pager = Pager.new(site, num_page, all_posts, pages)
+          pager = Pager.new(site, index, num_page, all_posts, pages)
           if num_page > 1
             newpage = Page.new(site, site.source, page.dir, page.name)
             newpage.pager = pager
-            newpage.dir = Pager.paginate_path(site, num_page)
+            newpage.dir = Pager.paginate_path(site, index, num_page)
             site.pages << newpage
           else
             page.pager = pager
@@ -56,11 +68,12 @@ module Jekyll
       # Static: Fetch the URL of the template page. Used to determine the
       #         path to the first pager in the series.
       #
-      # site - the Jekyll::Site object
+      # site  - the Jekyll::Site object
+      # index - index in the paginate_path list
       #
       # Returns the url of the template page
-      def self.first_page_url(site)
-        if page = Pagination.template_page(site)
+      def self.first_page_url(site, index)
+        if page = Pagination.template_page(site, index)
           page.url
         else
           nil
@@ -69,12 +82,13 @@ module Jekyll
 
       # Public: Find the Jekyll::Page which will act as the pager template
       #
-      # site - the Jekyll::Site object
+      # site  - the Jekyll::Site object
+      # index - index in the paginate_path list
       #
       # Returns the Jekyll::Page which will act as the pager template
-      def self.template_page(site)
+      def self.template_page(site, index)
         site.pages.select do |page|
-          Pager.pagination_candidate?(site.config, page)
+          Pager.pagination_candidate?(site.config, index, page)
         end.sort do |one, two|
           two.path.size <=> one.path.size
         end.first
